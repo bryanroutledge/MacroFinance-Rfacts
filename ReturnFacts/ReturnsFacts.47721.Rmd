@@ -1,0 +1,329 @@
+---
+title: "#Returns #Facts #Plots #Macro-Finance"
+author: "Bryan Routledge"
+date: "2022.01.11 (updated)"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+
+# A few facts and plots - Financial Returns Data
+
+Finance is a quantitative science -- we are looking to explain **quantities** of financial data.  For example, not just that risk premiums are positive but their magnitude.  The equity risk premium is 6% and that is a bug number,
+
+
+#### Load Libraries
+Loading libraries
+(If you need help loading libraries, let me know.)
+
+
+```{r}
+if("tidyverse" %in% installed.packages() == FALSE) {install.packages("tidyverse")}
+if("tidyquant" %in% installed.packages() == FALSE) {install.packages("tidyquant")}
+if("zoo" %in% installed.packages() == FALSE) {install.packages("zoo")}
+if("gt" %in% installed.packages() == FALSE) {install.packages("gt")}
+
+```
+
+
+```{r}
+
+
+# Load Data and few libs  
+library("tidyverse")
+library("tidyquant")
+library("lubridate")
+library("zoo")
+library("gt")  # use "gt" instead of print for tables
+
+# Bryan specific ones 
+source("bryan_lib.R")
+source("returns_lib.R")
+```
+
+#### Data
+
+This is data from Ken French data page.  This is the ``Fama-French'' (FF) data.  He pulls from CRSP and has a broad set of portfolios that are the standard test-bed portfolios to use in finance (macro-finance).
+
+Note the FF data comes as ``simple'' returns.  I have converted them 
+to continously compounded returns.
+
+
+* In the data R_n is: 
+$r_{n,t+1} = log(P_{n,t+1}+d_{t+1})-log(P_{n,t})$
+(where n is Market, I_coal, ... etc. )
+
+* Excess returns is the return above the risk free rate (one month t-bill is what is used in FF).  in the data these are denoted eR_Market and
+eR_n is: $r_{n,t+1}- r_{f,t+1}$
+
+* Usually it is better to work with eR_n.  This item tends to look a bit more stationary in the data and is connected to theroy nicely -- The average eR_n is the main object of attention.
+
+
+I have a script that pulls this from the page and dumps it in a csv file.  You should be able to get the FF data straight into R.
+See:
+
+* https://rviews.rstudio.com/2018/04/11/introduction-to-fama-french/
+* There has to be better options!
+
+
+
+
+#### Load Monthly Data
+```{r}
+Data <- Load.Monthly()
+Meta <- Make.Meta(Data)
+Meta %>% gt
+
+```
+
+Note this data is organized in a "panel" (like a spreadsheet) and not in a long list.  I now know (always be learning), R works better with things in a "long" format.  So on my agenda is updating code to do that.  I will keep you posted 
+
+## Risk Premium - (Unconditional) 
+
+
+* The stock market has big returns and is volatile.  
+* The risk free rate is small and is not volatile.  
++ Note the risk free rate here is nominal. So it includes 
+exected inflation.  We can re-do this with real rates and it is a 
+number <1% per year.
+
+```{r}
+
+R.stats<-Calc.R.stats(what=c("R_Market","R_Rf"),X=Data,sharpe.calc=FALSE)
+n<-Real.cols(R.stats)
+R.stats %>% gt %>% fmt_number(columns = all_of(n), decimals = 4)
+
+```
+
+
+#### The Equity risk premium is big! 
+
+* Don't we need a quantitative model to say that? YES! we do.
+* Estimating it is hard.  The big volatility in the data means
+it is a hard number to estimtate.
+* The ball park number I use is 6% with a vol of 20%
+
+```{r}
+
+R.stats<-Calc.R.stats(what=c("eR_Market"),X=Data)
+n<-Real.cols(R.stats)
+R.stats %>% gt %>% fmt_number(columns = n, decimals = 4)
+
+```
+```{r}
+R.stats<-bind_rows(R.stats, 
+  Calc.R.stats(start="19520101",what=c("eR_Market"),X=Data),
+  Calc.R.stats(start="19520101",end="20081231",what=c("eR_Market"),X=Data),  
+  Calc.R.stats(start="20000101",what=c("eR_Market"),X=Data),   
+  
+)
+
+
+R.stats %>% gt %>% fmt_number(columns = n, decimals = 4)
+
+```
+
+#### Invest $1
+
+One way to see that this is ``big'' (without a model, just yet) is to look at investing $1 in a buy-and-hold strategy.  That is just roll it over.
+
+The risk-free rate keeps you about on-par with incflation.  The stock market gets you $9,000+.  The ``stocks for the long run'' in one chart.
+
+To calculate this, it is easy.  With continuously compounded returns, the $\log(W_{n,T}) = \sum_{t=0}^T r_{n,t}$.  Just a sum of the returns on portfolio $n$ to date.  This is because, $W_{n,t+1}=W_{n,t} \exp(r_{n,t+1})$.
+
+
+```{r}
+one.dollar<-One.Dollar(what=c("R_Rf","R_Market"),end.only=TRUE)
+one.dollar<-bind_rows(
+  one.dollar,
+  One.Dollar(what=c("R_Rf","R_Market"),start="19520101",end.only=TRUE)
+)
+one.dollar<-bind_rows(
+  one.dollar,
+  One.Dollar(what=c("R_Rf","R_Market"),start="20000101",end.only=TRUE)
+)
+
+one.dollar %>% gt %>% fmt_number(columns = c(logW), decimals = 2) %>%
+  fmt_currency(columns = c(W), currency="USD")
+```
+
+
+```{r}
+p <- ggplot()+geom_line(data= One.Dollar(what=c("R_Rf","R_Market")) ,
+			aes(x=TIME,y=logW,color=Portfolio),size=1.3)
+print(p)
+```
+```{r}
+p <- ggplot()+geom_line(data= One.Dollar(what=c("R_Rf","R_Market"),start="19520101") ,
+			aes(x=TIME,y=logW,color=Portfolio),size=1.3)
+print(p)
+```
+
+```{r}
+p <- ggplot()+geom_line(data= One.Dollar(what=c("R_Rf","R_Market"),start="20000101") ,
+			aes(x=TIME,y=logW,color=Portfolio),size=1.3)
+print(p)
+```
+
+```{r}
+Best.Worst(Flag.Year = 2020,N=12) %>% gt %>% fmt_number(columns = vars(R), decimals = 1, scale_by = 100, pattern="{x}%")
+```
+
+
+## Cross-Section
+
+The second big quantative thing is the cross-section of risk-premiums.  Why do some portfolios have higher or lower expected returns?
+
+
+#### Industry 
+```{r}
+
+
+R.stats<-Calc.R.stats(what.pattern  =c("eR_I"), what=c("eR_Market"),
+                      start="19520101",
+                      X=Data) %>% arrange(mean.er.annual)
+# Other is a goofy category; drop for now
+R.stats <- R.stats %>% filter(portfolio !="eR_I_Other")
+
+# Pick some interesting ones - top and bottom
+Bot<-R.stats %>% select(portfolio) %>% head(n=5) %>% pull
+Top<-R.stats %>% select(portfolio) %>% tail(n=5) %>% pull
+
+n<-Real.cols(R.stats)
+R.stats %>% filter(portfolio %in% c(Bot,"eR_Market",Top)) %>% gt %>% fmt_number(columns = n, decimals = 4)
+
+```
+
+#### Invest $ - using eR
+
+The invest $1 plot shows how wealth grows if you invest in portfolio $n$.  
+Here, in this plot, we are using excess returns, so we are calculating
+$\log(W_{i,T}) = \sum_{t=0}^T (r_{i,t}-r_{f,t})$.  So think of this as the
+extra wealth you have above investing in the risk-free rate.  Since the
+risk-free rate is so small, the plots give us the same information.
+
+(I have fudged "NA" here to "0" so the plot works.  Some of these portfolios are not defined until later in the sample)
+
+
+```{r}
+p <- ggplot()
+p <- p + geom_line(data= One.Dollar(what=c("eR_Market"),start="19520101",make.na.zero = TRUE) ,
+			aes(x=TIME,y=logW,color=Portfolio),size=1.3)
+p <- p + geom_line(data= One.Dollar(what=c(Bot), start="19520101",make.na.zero = TRUE) ,
+			aes(x=TIME,y=logW,color=Portfolio),linetype="solid")
+p <- p + geom_line(data= One.Dollar(what=c(Top), start="19520101",make.na.zero = TRUE) ,
+			aes(x=TIME,y=logW,color=Portfolio),linetype="dashed")
+print(p)
+
+```
+
+
+#### Characteristics
+
+If you build portfolios based on observable characteristics (like market cap or book assets), you generate portfolios that highlight the cross sectional differences.
+
+* Size -- market capitalization 
+* BEME -- Book equity / market capitaliztion
+* Momentum -- buy stocks that went up last month ...
+
+```{r}
+# Just do this for everything
+# this generates some warning/errors. Some of thes columns are missing etc.
+R.stats<-Calc.R.stats(what.pattern = NULL,
+                     what=c("eR_Size_Hi10","eR_Size_Lo10",
+                            "eR_BEME_Hi10","eR_BEME_Lo10",
+                            "eR_Mom_High","eR_Mom_Low"),
+                      start="19520101",
+            X=Data) %>% arrange(mean.er.annual) %>% arrange(portfolio)
+
+R.stats %>% gt %>% fmt_number(columns = n, decimals = 4)
+
+
+```
+
+```{r}
+p <- ggplot()
+p <- p + geom_line(data= One.Dollar(what=c("eR_Market"),start="19720101") ,
+			aes(x=TIME,y=logW,color=Portfolio),size=1.3)
+p <- p + geom_line(data= One.Dollar(what=c("eR_Mom_High","eR_Size_Lo10","eR_BEME_Hi10"), start="19720101") ,
+			aes(x=TIME,y=logW,color=Portfolio),linetype="solid")
+p <- p + geom_line(data= One.Dollar(what=c("eR_Mom_Low","eR_Size_Hi10","eR_BEME_Lo10"), start="19720101") ,
+			aes(x=TIME,y=logW,color=Portfolio),linetype="dashed")
+print(p)
+
+```
+
+
+#### Load Daily Data
+```{r}
+Data <- Load.Daily()
+Meta <- Make.Meta(Data)
+Meta %>% gt
+
+```
+## Returns and Risk-Premiums
+
+Things look about the same.  
+
+* In here I am anualizing to annual data assuming 250 trading days per year 
+* AND!  iid returns....  This assumption is not horrible for macro-like measurements.  But it is not great (see the vol discussion below)
+
+```{r}
+
+R.stats<-Calc.R.stats(what=c("R_Market","R_Rf"),X=Data,sharpe.calc=FALSE)
+n<-Real.cols(R.stats)
+R.stats %>% gt %>% fmt_number(columns = n, decimals = 4)
+```
+
+
+
+```{r}
+R.stats<-Calc.R.stats(what=c("eR_Market"),X=Data)
+R.stats<-bind_rows(R.stats, 
+  Calc.R.stats(start="19520101",what=c("eR_Market"),X=Data),
+  Calc.R.stats(start="19520101",end="20081231",what=c("eR_Market"),X=Data),  
+  Calc.R.stats(start="20000101",what=c("eR_Market"),X=Data),   
+  
+)
+R.stats %>% gt %>% fmt_number(columns = n, decimals = 4)
+
+```
+
+
+## Volatility (Standard deviation)
+
+Finance folks like the term ``volatility'' for the second moment of a distribution (variance, standard deviation).  If you cross the road to CS they like the term ``entropy.''  The reason a loose term is handy here is we are getting a feel for the variability in the data.  Precisely measuring all this requires a more careful time-series model
+
+#### Best/Worst days
+
+These are really big numbers, yeah?!
+
+```{r}
+Best.Worst(Flag.Year = 2020,N=16) %>% gt %>% fmt_number(columns = c(R), decimals = 1, scale_by = 100, pattern="{x}%")
+
+
+```
+
+#### Clustering of Volatility 
+
+Notice that when things are volatile, they stay that way for a bit.  Volatiliyt is often modeled as an AR(n) process (i.e. not iid)
+
+
+Spot the dot-com collapse, the financial crisis,...
+```{r}
+Plot.TimeSeries(what=c("R_Rf","R_Market"))
+```
+```{r}
+Plot.TimeSeries(what=c("R_Rf","R_Market"),start="19990101")
+```
+
+
+Spot the pandemic's arrival! 
+```{r}
+Plot.TimeSeries(what=c("R_Rf","R_Market"),start="20150101")
+```
+
+
+
