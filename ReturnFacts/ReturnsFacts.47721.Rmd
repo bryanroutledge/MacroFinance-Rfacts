@@ -1,7 +1,7 @@
 ---
 title: "#Returns #Facts #Plots #Macro-Finance"
 author: "Bryan Routledge"
-date: "2022.01.11 (updated)"
+date: "2023.01.14 (updated)"
 output:
   html_document: default
   pdf_document: default
