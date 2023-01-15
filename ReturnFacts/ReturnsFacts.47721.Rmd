@@ -72,7 +72,7 @@ See:
 
 #### Load Monthly Data
 ```{r}
-Data <- Load.Monthly()
+Data <- read_csv(file="http://gerbil.life/47721/data/FF.Data.Monthly.csv")
 Meta <- Make.Meta(Data)
 Meta %>% gt
 
@@ -168,7 +168,7 @@ print(p)
 ```
 
 ```{r}
-Best.Worst(Flag.Year = 2020,N=12) %>% gt %>% fmt_number(columns = vars(R), decimals = 1, scale_by = 100, pattern="{x}%")
+Best.Worst(Flag.Year = 2020,N=12) %>% gt %>% fmt_number(columns = c(R), decimals = 1, scale_by = 100, pattern="{x}%")
 ```
 
 
@@ -257,8 +257,11 @@ print(p)
 
 
 #### Load Daily Data
+
+(loading this from a web page is a bit slow.  Save the file to your own machine to
+make it faster)
 ```{r}
-Data <- Load.Daily()
+Data <- read_csv(file="http://gerbil.life/47721/data/FF.Data.Daily.csv")
 Meta <- Make.Meta(Data)
 Meta %>% gt
 
