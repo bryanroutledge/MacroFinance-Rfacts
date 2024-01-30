@@ -64,6 +64,19 @@ clean.dash <- function(
 	return(x)
 }
 
+clean.col.names <- function(
+  x)
+{
+  x<-gsub("%","percent",x,perl=TRUE)
+  x<-str_to_lower(x)
+  x<-clean.dash(x)
+  x<-gsub("-",".",x,perl=TRUE)	
+  x<-make.unique(x)
+  return(x)
+}
+
+
+
 f.pdf<-function(
         file,
         dir="Graphics"
@@ -173,7 +186,9 @@ print.plot.png<-function(
   f.path=NA,
   aspect.ratio = 1.4,
   size = 6,
-  units = "in"
+  units = "in",
+  display.plot=FALSE,
+  echo.file=TRUE
 ){
   # 
   # f.path / f.stub . f .png
@@ -188,7 +203,8 @@ print.plot.png<-function(
   f<-sub("(png.)*png", "png", f, ignore.case = TRUE, perl = TRUE)
   f<-sub("//+", "/", f, ignore.case = TRUE, perl = TRUE)
 
-  print(f)
+  if(echo.file){print(f)}
+  if(display.plot){print(p)}
   ggsave(filename=f,
          device="png",
          plot=p,
@@ -280,6 +296,8 @@ print.error<-function(
   }
 }
 
+stop.here<-function(){print.error(stop="stop here")}
+
 print.all<-function(data){print(data,n=Inf)}
 	
 
@@ -356,4 +374,21 @@ print.letters.to.names<-function(n){
   n%>%mutate(Index=paste0(short,"=",detail))%>%select(Index)
 }
 
+mean_na<-function(x){mean(x,na.rm=TRUE)}
+std_na<-function(x){sd(x,na.rm=TRUE)}
+max_na<-function(x){max(x,na.rm=TRUE)}
+
+mod <-function(
+    numerator, 
+    denominator
+){
+  numerator %/% denominator
+}
+
+rem <-function(
+    numerator, 
+    denominator
+){
+  numerator %% denominator
+}
 

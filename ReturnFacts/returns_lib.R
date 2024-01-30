@@ -71,22 +71,31 @@ Fix.Leap.Year <- function(
 	return(as_date(x))
 }
 
-Load.Daily<-function()
+
+Load.Daily<-function(
+  dir="./"  # local is default    
+)
 {
-  print.error(warn="Loading: FF.Data.Daily.Rdata")
-  load("FF.Data.Daily.Rdata")
+  file="FF.Data.Daily.Rdata"
+  file=file.path(dir,file)
+  print.error(warn=paste0("Loading: ",file))
+  load(file)
 	return(FF.Data.Daily)
 }
 
-Load.Monthly<-function()
+Load.Monthly<-function(
+    dir="./"  # local is default    
+)
 {
-  print.error(warn="Loading: FF.Data.Monthly.Rdata")
-  load("FF.Data.Monthly.Rdata")
+  file="FF.Data.Monthly.Rdata"
+  file=file.path(dir,file)
+  print.error(warn=paste0("Loading: ",file))
+  load(file)
   return(FF.Data.Monthly)
 }
 
 Load.PE<-function(
-	f="../ShillerPE.csv",
+	f="./ShillerPE.csv",
 	Download=FALSE
 ){
 	if(Download){
@@ -106,6 +115,7 @@ Load.PE<-function(
 	)  
 	# replace Date
 	Data <- Data %>% mutate(Period=as.factor("Monthly"))
+	Data %>% names %>% print()
 	Data <- Data %>% select(Period,TIME,year,month,day, everything())	
 	return(Data)
 }

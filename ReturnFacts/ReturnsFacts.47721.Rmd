@@ -1,7 +1,7 @@
 ---
 title: "#Returns #Facts #Plots #Macro-Finance"
 author: "Bryan Routledge"
-date: "2023.01.14 (updated)"
+date: "2024.01.08 (updated)"
 output:
   html_document: default
   pdf_document: default
@@ -86,7 +86,7 @@ Note this data is organized in a "panel" (like a spreadsheet) and not in a long 
 * The stock market has big returns and is volatile.  
 * The risk free rate is small and is not volatile.  
 + Note the risk free rate here is nominal. So it includes 
-exected inflation.  We can re-do this with real rates and it is a 
+expected inflation.  We can re-do this with real rates and it is a 
 number <1% per year.
 
 ```{r}
@@ -97,12 +97,24 @@ R.stats %>% gt %>% fmt_number(columns = all_of(n), decimals = 4)
 
 ```
 
+Note the risk-free rate moves around a fair bit.  Most of this is
+due to inflation
+
+```{r}
+p<- ggplot(data=Data)
+p<- p + geom_line(aes(x=t,y=R_Rf))
+p
+```
 
 #### The Equity risk premium is big! 
 
 * Don't we need a quantitative model to say that? YES! we do.
+* Here we look at EXCESS returns: $r_{t+1,market}-r_{t+1,risk-free}$.  In my data
+I have these named "eR_*".  Here the risk-free rate is the 1 month t-bill.  Note
+this removes (mostly) the impact of inflation since inflation expectations
+would be in both R_market and R_Rf.  This also makes the data more "stationary".
 * Estimating it is hard.  The big volatility in the data means
-it is a hard number to estimtate.
+it is a hard number to estimate.
 * The ball park number I use is 6% with a vol of 20%
 
 ```{r}
@@ -129,9 +141,11 @@ R.stats %>% gt %>% fmt_number(columns = n, decimals = 4)
 
 One way to see that this is ``big'' (without a model, just yet) is to look at investing $1 in a buy-and-hold strategy.  That is just roll it over.
 
-The risk-free rate keeps you about on-par with incflation.  The stock market gets you $9,000+.  The ``stocks for the long run'' in one chart.
+The risk-free rate keeps you about on-par with incflation.  The stock market gets you $11,000+.  The ``stocks for the long run'' in one chart.
 
 To calculate this, it is easy.  With continuously compounded returns, the $\log(W_{n,T}) = \sum_{t=0}^T r_{n,t}$.  Just a sum of the returns on portfolio $n$ to date.  This is because, $W_{n,t+1}=W_{n,t} \exp(r_{n,t+1})$.
+
+(This is such a common plot -- you use it all the time when you are teaching finance -- that I made a function to calculate this.  That is my "One.Dollar" function.)
 
 
 ```{r}

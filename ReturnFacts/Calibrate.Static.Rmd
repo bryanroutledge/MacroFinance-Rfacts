@@ -1,0 +1,204 @@
+---
+title: "Calibration - Static Model"
+output: html_document
+date: "2024-01-08"
+---
+
+
+# Calibrate a 2x2 model 
+
+
+
+See:  https://docs.google.com/spreadsheets/d/1LbwFNB81VTQSGGbJ1iwFhSimmtGjjZ_XQnqvxcTJhKA/edit?usp=sharing
+
+N=2 Securities		
+K=2 states		
+		
+Targets:		
+R_f	5.6%	 .. per year
+E[R_m-R_f]	6.0%	 .. per year
+sigma[R_m-R_f]	20.0%	 .. per year
+Sharpe Ratio (FYI)	0.30	 .. per year
+Current S&P Price	$4,756.04	.. as of 2023.01.8
+
+
+```{r}
+
+
+# Load Data and few libs  
+library("tidyverse")
+library("tidyquant")
+library("lubridate")
+library("zoo")
+library("gt")  # use "gt" instead of print for tables
+
+# Bryan specific ones 
+source("/Users/rout/Desktop/Dropbox/R_lib/bryan_lib.R")
+source("~/Desktop/Dropbox/R_lib/fred_lib.R")  # loads api key and fred library
+
+source("returns_lib.R")
+```
+
+
+- Focus on 2 state one for now
+
+GET LIVE:
+- Rf =  https://fred.stlouisfed.org/series/DGS1MO
+- sigma.eRm =  https://fred.stlouisfed.org/series/VIXCLS
+- P.stock = https://fred.stlouisfed.org/series/SP500
+
+```{r}
+Live.Data.Series<-tribble(
+	 ~series_id, ~series_name_short, ~series_name, 
+  #----------- | --------	 
+  "DGS1MO",   "Rf", "Treasury Securities at 1-Month Constant Maturity",
+  "SP500",   "P.stock",  "S&P 500",
+  "VIXCLS",  "sigma.eRm", "CBOE Volatility Index: VIX"
+)
+
+Data<-get.fred.data(series = Live.Data.Series)
+
+Data <- Data %>% mutate(
+              # hack for now; fix later
+              value=ifelse(series_name_short %in% c("Rf","sigma.eRm"),value/100,value)
+            )
+  
+Meta<-get.fred.meta(series = Live.Data.Series)
+
+Data.Latest <- Data %>% group_by(series_id) %>% filter(row_number()==n())
+                               
+```
+
+```{r}
+Get.Live <- function(
+    X,
+    data=Data.Latest
+){
+  for (i in data %>% pull(series_name_short)){
+    print(i)
+    x <- data %>% filter(series_name_short == i) %>% pull(value)
+    X <- X %>% mutate(!!i := x)
+    
+    t <- data %>% filter(series_name_short == i) %>% pull(date)
+    i<-paste0(i,".date")
+    X <- X %>% mutate(!!i := t)
+  }
+  X<- X %>% relocate((ends_with("date")), .after = last_col())
+  return(X)
+}
+```
+
+
+```{r}
+Economy <- list(
+  K=2,   # States
+  pL = 0.5,
+  pH = 0.5,
+  #
+  Rf =   0.05,
+  E.eRm = 0.06,
+  sigma.eRm = 0.20,
+  #
+  P.bond=100.0,
+  P.stock = 4756.04
+) %>% as_tibble()
+
+
+# Economy <- Get.Live(Economy)  # updates a Rf etc.
+
+Economy %>% gt()
+
+```
+
+## Make D R P Matricies 
+
+- hack for now
+- gausian quadriture for more general examples later
+
+NOTE:  https://css18.github.io/linear-algebra.html
+
+```{r}
+
+#initialize
+R <-  matrix(c(1,1,1,1), nrow = 2, ncol = 2, byrow = TRUE)
+D <-  R  #same
+P <- c(1,1)            #matrix(c(1,1), nrow = 1, ncol = 2, byrow = TRUE)
+prob <- c(.5,.5)
+a<-prob # AD
+m<-prob # kernel
+q<-prob # rn probs
+
+n.rf=1
+n.stock=2
+k.bust=1
+k.boom=2
+
+prob[k.bust]=Economy$pL
+prob[k.boom]=Economy$pH
+
+R[k.bust,n.rf]=1 + Economy$Rf 
+R[k.boom,n.rf]=1 + Economy$Rf
+
+
+R[k.bust,n.stock]=1 + Economy$Rf + 
+        Economy$E.eRm - sqrt((1-prob[k.bust])/prob[k.bust])*Economy$sigma.eRm
+R[k.boom,n.stock]=1 + Economy$Rf + 
+        Economy$E.eRm + sqrt((1-prob[k.boom])/prob[k.boom])*Economy$sigma.eRm
+
+
+P[n.rf] = Economy$P.bond
+P[n.stock] = Economy$P.stock 
+
+D = R * rbind(t(P),t(P))  # element by element ... just re-scales
+
+```
+
+
+- Calculate AD prices and Q and m
+
+Theta D = I 
+Theta = D^{-1}
+a' = P Theta = P D^{-1}
+or
+a'D = P
+a' = P Theta = P D^{-1}
+
+
+
+```{r}
+D.inv = solve(D) 
+a =  t( P %*%  D.inv )  %>% as.vector()  # The t() so it is a row matrix 
+```
+
+- Normalizations
+
+m = a(s) /p(s)   ... cost of $1 in state per unit of probability
+b = price of certain $1 = sum(a)
+q = a(s) /sum(a)
+
+```{r}
+m = a / prob   # element by element
+
+q = a / sum(a)  # note sum(a) is the rf bond price (for payoff $1.00)
+
+```
+
+
+# Display all this in a pretty table ... 
+
+
+
+
+# Eigenvectors and Eigenvalues
+
+```{r}
+X <- eigen(R)
+
+R.eigenvalues <- X$values
+R.eigenvectors <- X$vectors
+
+#
+R.equal.to.R <- R.eigenvectors %*% diag(R.eigenvalues) %*% solve(R.eigenvectors)
+
+```
+
