@@ -1,0 +1,364 @@
+---
+title: '#Dynamic #Returns #Facts #Plots #Macro-Finance'
+author: "Bryan Routledge"
+date: "Update: 2024.01.08 "
+output: html_document
+---
+
+# Dynamic Facts 
+
+We looked at $E[R_m-R_f]$ ... now let's look at  $E[R_{m,t+1}-R_{f,t+1}|z_t]$.  What do returns look like given information $z_t$ at date $t$. (Also written as $E_t[R_m-R_f]$ the $t$ in the expectation is short for conditional on info to date t.)
+
+
+#### Background 
+
+```{r}
+
+# See: https://blog.rstudio.com/2020/04/08/great-looking-tables-gt-0-2/
+library(gt)  # use "gt" instead of print
+
+# Load Data and few libs  
+library("MASS")  # CONCLFLICTS WITH tidyverse!! "select" so load this first!
+library("tidyverse")
+library("tidyquant")
+library("tibbletime")
+library("lubridate")
+
+# Bryan specific ones 
+source("bryan_lib.R")
+source("returns_lib.R")
+```
+
+#### Data
+
+This is data from Ken French data page.  (Same as static).
+Data on P/E Ratio is fron Shiller
+http://www.econ.yale.edu/~shiller/data.htm
+This site has a nice plot  https://www.multpl.com/shiller-pe
+
+-- Data files 
+(You can download the data and change these to local files and that will make things run faster)
+
+```{r}
+FF.Data.Monthly.File<-"http://gerbil.life/47721/data/FF.Data.Monthly.csv"
+FF.Data.Daily.File<- "/Users/rout/Desktop/Dropbox/FamaFrenchToStata/R/FF.Data.Daily.csv"
+   #  "http://gerbil.life/47721/data/FF.Data.Daily.csv"
+ShillerPE.file    <-"http://gerbil.life/47721/data/ShillerPE.csv"
+
+# Note for Bryan: Download=TRUE runs FamaFrenchToStata/Get.ShillerPE.pl
+# Data.pe <-Load.PE(f=ShillerPE.file, Download=FALSE)  
+
+```
+
+
+
+#### Load Monthly Data
+```{r}
+Returns <- read_csv(file=FF.Data.Monthly.File)
+Meta <- Make.Meta(Returns)
+Meta %>% gt
+
+```
+
+#### Data - Macro
+
+There is lots of data we could get to describe t.  See FRED https://fred.stlouisfed.org/ (and investigate: library(fredr)).  But here I am going to use "Price/Divided" ratio.
+
+This data comes from Bob Shiller.
+http://www.econ.yale.edu/~shiller/data.htm
+This site has a nice plot  https://www.multpl.com/shiller-pe
+
+Run ./Get.ShillerPE.pl
+
+Merging the data took a moment (I was geting 14 months per year and goofy errors.  Good to try this on a small subset to get it working.  Note de-selecting "date" was needed since they happen to be different types.  And they are irrelevant)
+
+```{r}
+# Download=TRUE runs FamaFrenchToStata/Get.ShillerPE.pl
+Data.pe <-Load.PE(f=ShillerPE.file, Download=FALSE)  
+Meta <- Make.Meta(Data.pe)
+Meta %>% gt
+
+Data<- full_join(Data.pe %>% select(-date) %>% filter(year >= 1926),
+                  Returns %>%select(-date)) # date and date are dif types.
+
+Meta <- Make.Meta(Data)
+Meta %>% gt
+
+```
+
+# Dynamic Facts - Predict Market Return (excess return)
+
+Now to work!
+
+Cochrane (2011) runs this regression:
+
+$$eR_{t+n} = a + b X_t  + \epsilon_{t+n}$$
+where $eR_{t+n}$ is the excess return $n$ months from date $t$.  Think of this as a predictive regression.  We are predicting if the future return is (on average) big or small.  
+$$\begin{array}{rcl}E_t[eR_{t+n}] &=& a + b X_t  + E_t[\epsilon_{t+n}]\\~\\
+E_t[eR_{t+n}] &=& a + b X_t  
+\end{array}$$
+
+
+
+Here we are goint to use X from the price/dvidend series - called cape in our data.
+CAPE stands for cyclailly-adjusted price-earnings ratio.  See Shiller's data page for the details. There are muiltiple ways to measure this.  To follow cochrane we will use 1/cape.
+
+Think for a second what old-school efficient market random walkers would say.  Old-school ``efficient market hypotheis'' is that $eR_{t+n}$ is iid.  The ``random walk'' is short-hand for cannot be predicted.  So they might predict $a=$
+```{r}
+mean(Data$eR_Market,na.rm=TRUE)*12
+```
+
+and $b=0$.  
+
+Alas!  The Cochrane regression establishes the indeed $b$ is not zero!  And the conculsion is that $E_t[R_{m,t+1}-R_{f,t+1}]$ is not constant.  The equity risk premium is state dependent.
+
+
+Prep
+
+We need to lead or lag one of the variables.  If we want to regress eR and X we want them on the same row.  (and ypu can either lead eR or lag X to get this - both are simular)
+
+To see if we are doing this right.  Follow that dpratio in Jan 2000 to Jan 2001 and Jan 2005
+
+```{r}
+
+# Shrink the data (just so we can see things)
+data <- Data %>% 
+      select(Period,TIME,year,month,cape,cape1,eR_Market) %>%
+      filter(year>=1947 )
+
+# create the predictor(s)
+data <- data %>% mutate(
+  dpratio = 1/cape,
+  dpratio_n12 = lag(dpratio,n=12),  # one year forecast
+  dpratio_n60 = lag(dpratio,n=60)  # five year forecast
+)
+
+data %>% select(year,month,cape,starts_with("dp"),eR_Market) %>%
+filter(year%in%c(2000,2001,2005)&month%in%c(1,2,3)) %>% gt
+
+
+```
+
+Try these regressions
+
+$$eR_{t+n} = a + b X_t  + \epsilon_{t+n}$$
+
+The "r" in rlm is "robust" -- the tstats are adjusted for the autocorrelation in the data (that we hammed in there with lags)
+```{r}
+summary(rlm(eR_Market ~ dpratio_n12, data = data))
+
+summary(rlm(eR_Market ~ dpratio_n60, data = data))
+```
+
+Not much there?  That coeffienct on dpratio value is not so impressive.  This regression is predicting the return in month Jan 2001 using the value of DP ratio in Jan 2000.... It turns out this is quite the regression we want.  
+
+I want to know if the DP ratio in Jan 2000 tells me about the return over the coming year Jan 2000 to Jan 2001.  Sure the return in that month tells me a bit about that.   But if we smooth a bit, can we see things better.
+
+$$eR_{t \rightarrow t+n} = a + b X_t  + \epsilon_{t+n}$$
+
+This is exactly what we did in the ``invest a dollar'' plots. Except here we are rolling the sum on excess returns. We want
+$$eR_{t \rightarrow t+n} = \sum_{i=1}^n eR_{t+i}$$
+
+```{r}
+# Could use One.Dollar function?  
+
+data<-data %>% mutate(
+  eR_Market_fixna = ifelse(is.na(eR_Market),0,eR_Market),
+  logeW = cumsum(eR_Market_fixna),
+  eR_Market_n12 = (logeW - lag(logeW,n=12)), # one year return per year
+  eR_Market_n60 = (logeW - lag(logeW,n=60))/5, # 5 year return per year
+)
+data<-data %>% select(-eR_Market_fixna)
+               
+data %>% select(year,month,cape,starts_with("dp"),starts_with("eR_Market")) %>%
+filter(year%in%c(2000,2001,2005)&month%in%c(1,2,3)) %>% gt %>% 
+  fmt_number(matches("(dp|eR)"),decimals=4)
+
+# check we did it ok?
+data %>% 
+  summarise_at(c("eR_Market","eR_Market_n12","eR_Market_n60"), mean, na.rm = TRUE) %>% gt %>% fmt_number(everything(), decimals = 4)
+```
+## Predictive regression of Cochrane (2011)
+
+
+The one-year horizon.  Notice:
+- the R2 is tiny -- returns are volatile
+- the lm and rlm are pretty similar.  I will use the rlm for the plots
+- the coef's is what matters. ... more below
+
+
+```{r}
+# choose "lm" or "rlm" ... both about the same result
+fit <- (lm(eR_Market_n12 ~ dpratio_n12, data = data))
+summary(fit)
+
+```
+
+The model gives is an estimate of $E[eR_{t+n}|X_t]$. The key insight in the Cochrane paper is that $V(E[eR_{t+n}|X_t])$ is big.  The risk premium depends on the information at date $t$ in a way that is economically meaningful.  
+
+```{r}
+
+# Argh! Does anyone have a simple way to building a summary-stat table!
+as_tibble(t(
+    c(mean=mean(predict(fit)),sd=sd(predict(fit)))
+    ))%>% 
+  gt %>% tab_header(
+    title = "(E[eR_{t+n}|X_t])")
+
+```
+
+
+That is about 2.9% is pretty big - 1/2 ish to 1/4 ish of the equity premium puzzle.  Note that is not the volatility of returns, it is the volatility of expected returns.  Old-school efficient-marketers will tell you this number is zero.
+
+(Interestingly that number is smaller than Cochrane gets in his paper. replication is hard! But more important, that estimate of standard deviation is masking the auto-correlation here.  A plot helps us see this.
+
+
+```{r}
+# mashing the prediction into our data seems a pain 
+data$eR_Market_n12_predict=NA
+data$eR_Market_n12_predict[(!is.na(data$eR_Market_n12))&!is.na(data$dpratio_n12)]=predict(fit)
+
+D<-data %>% gather(key=what,value=R,starts_with("eR"))
+
+p<- ggplot(data=D%>%filter(what%in%c("eR_Market_n12_predict"))%>%
+                             filter(!is.na(R))) 
+p<- p+ geom_line(aes(x=TIME,y=R,color=what))
+
+print(p)
+
+
+
+
+```
+
+The expected equity risk premium has some business-cycle properties.  When it is low it is low for awhile.  (Recall when you estimate a standard deviation or a mean you have a statistical model in mind. The simple estimates we use based on sample average have in mind a model where the data are iid -- that is indpendent across time.  That is definitely not the case here.)
+
+
+Of course, the R2 of this regression
+```{r}
+ 
+p+geom_point(data=D%>%filter(what%in%c("eR_Market_n12"))%>%
+                    filter(!is.na(R)),
+                  aes(x=TIME,y=R,color=what),size=0.1)
+```
+
+
+# What about at 60 months?
+
+Just for compleness... we get similar conclusions if you look at the 5 year horizon.
+
+```{r}
+# choose "lm" or "glm" ... both about the same
+fit <- (lm(eR_Market_n60 ~ dpratio_n60, data = data))
+summary(fit)
+
+as_tibble(t(
+    c(mean=mean(predict(fit)),sd=sd(predict(fit)))
+    ))%>% 
+  gt %>% tab_header(
+    title = "(E[eR_{t+n}|X_t])")
+
+data$eR_Market_n60_predict=NA
+data$eR_Market_n60_predict[(!is.na(data$eR_Market_n60))&!is.na(data$dpratio_n60)]=predict(fit)
+
+D<-data %>% gather(key=what,value=R,starts_with("eR"))
+
+p<- ggplot(data=D%>%filter(what%in%c("eR_Market_n60_predict"))%>%
+                             filter(!is.na(R))) 
+p<- p+ geom_line(aes(x=TIME,y=R,color=what))
+
+print(p)
+
+```
+
+
+# Volatility is also time-varrying
+
+
+We can see this from two perspectives.  First we can calculate a rolling estimate of the volatility (reported in standard deviation).  To do this, let's use
+the daily data
+
+
+#### Load Monthly Data
+```{r}
+Returns <- read_csv(file=FF.Data.Daily.File)
+Meta <- Make.Meta(Returns)
+Meta %>% gt
+
+```
+
+
+
+
+```{r}
+# Window 
+K = 90 #days 
+# Define Stats
+mean_na<-function(x){mean(x,na.rm=TRUE)}
+std_na<-function(x){sd(x,na.rm=TRUE)}
+# Define the Rollify 
+mean_roll <- rollify(mean_na, window = K)
+mean_std  <- rollify(std_na,  window = K)
+
+
+Data <- Returns %>% select(t,eR_Market,R_Rf) %>% # add others?
+    pivot_longer(cols=c(eR_Market,R_Rf), names_to="Portfolio", values_to ="R") %>%
+    arrange(Portfolio,t) %>% group_by(Portfolio) %>% 
+  mutate(
+    R.mean = mean_roll(R),
+    R.std =  mean_std(R)
+  ) %>%
+  mutate(
+     R.mean.annual = R.mean * 250,
+     R.std.annual = R.std * sqrt(250),
+     
+  )
+
+
+
+```
+
+```{r}
+p<- ggplot(data=Data%>%filter(!is.na(R.std)))
+p<- p+ geom_line(aes(x=t,y=R.std.annual,
+                    
+                     color=Portfolio))
+
+print(p)
+
+```
+
+#### A look at the VIX
+
+The Vix is: https://www.investopedia.com/terms/v/vix.asp
+"The CBOE Volatility Index (VIX) is a real-time index that represents the market’s expectations for the relative strength of near-term price changes of the S&P 500 Index (SPX). Because it is derived from the prices of SPX index options with near-term expiration dates, it generates a 30-day forward projection of volatility. Volatility, or how fast prices change, is often seen as a way to gauge market sentiment, and in particular the degree of fear among market participants."
+
+Check out the CBOE page: https://cdn.cboe.com/resources/vix_options/VIX_fact_sheet.pdf
+
+The VIX is not directly traded (it is an measured index).  But there are futures and options that have payoffs defined by the VIX.
+
+The VIX is calibrated so the index "price" is the annual volatility of the market.
+
+
+-- get the data from:
+https://www.cboe.com/tradable_products/vix/vix_historical_data/
+https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv
+
+
+```{r}
+Data <- read_csv(file="https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv")
+
+Data <- Data %>% mutate(
+  vix = CLOSE,
+  Rvix = log(CLOSE/lag(CLOSE)),
+  date = mdy(DATE)
+)%>%  select(date,vix,Rvix,everything())
+```
+
+
+```{r}
+p<- ggplot(data=Data) 
+p<- p + geom_line(aes(x=date,y=(vix)))
+p
+```
+
